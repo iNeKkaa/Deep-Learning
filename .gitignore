@@ -1,0 +1,40 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Data folders
+data/
+datasets/
+cache/
+
+# Preprocessed tensors and cached files
+*.pt
+*.pth
+
+# Keep the models folder structure, but ignore saved model weights
+models/*.pt
+models/*.pth
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Kaggle credentials
+kaggle.json
