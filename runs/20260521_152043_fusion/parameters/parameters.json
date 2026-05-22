@@ -1,0 +1,16 @@
+{
+    "data_dir": "data/ptb-xl/1.0.3",
+    "download_data": false,
+    "sampling_rate": 100,
+    "model": "fusion",
+    "epochs": 10,
+    "batch_size": 64,
+    "lr": 0.001,
+    "num_workers": 0,
+    "max_samples": null,
+    "no_metadata": false,
+    "debug_batches": false,
+    "use_cache": true,
+    "rebuild_cache": false,
+    "cache_dir": "cache"
+}
