@@ -3,4 +3,6 @@ pandas>=2.2.3
 matplotlib
 wfdb
 tqdm
+scikit-learn
+umap-learn
 ipykernel
