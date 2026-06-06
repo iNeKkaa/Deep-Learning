@@ -1,0 +1,503 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------
+% Packages and layout
+% ---------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{tabularx}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\geometry{top=2.05cm,bottom=2.05cm,left=2.05cm,right=2.05cm}
+\setlength{\parskip}{0.23em}
+\setlength{\parindent}{0pt}
+\setlist[itemize]{noitemsep,topsep=0.2em,leftmargin=1.1cm}
+\setlist[enumerate]{noitemsep,topsep=0.2em,leftmargin=1.1cm}
+\captionsetup{font=small,labelfont=bf}
+\raggedbottom
+
+\definecolor{darkblue}{RGB}{20,52,95}
+\definecolor{softblue}{RGB}{237,244,250}
+\definecolor{softgray}{RGB}{246,247,248}
+
+\hypersetup{colorlinks=true,linkcolor=darkblue,citecolor=darkblue,urlcolor=darkblue}
+\titleformat{\section}{\Large\bfseries\color{darkblue}}{\thesection}{0.65em}{}
+\titleformat{\subsection}{\large\bfseries\color{darkblue}}{\thesubsection}{0.55em}{}
+\titlespacing*{\section}{0pt}{0.85em}{0.35em}
+\titlespacing*{\subsection}{0pt}{0.60em}{0.25em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small 12-Channel ECG Classification}
+\rhead{\small Kappa Group}
+\cfoot{\small \thepage}
+\renewcommand{\headrulewidth}{0.25pt}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\imgbox}[3]{%
+\IfFileExists{#1}{\includegraphics[width=#2,height=#3,keepaspectratio]{#1}}{\fbox{\parbox[c][#3][c]{#2}{\centering\small Missing figure:\\ \texttt{\detokenize{#1}}}}}}
+
+% ---------------------------------------------------------
+\begin{document}
+% ---------------------------------------------------------
+
+\begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \vspace*{0.8cm}
+    {\Large Deep Learning Project\par}
+    \vspace{0.25cm}
+    {\large Kappa Group\par}
+    \vspace{1.1cm}
+    {\Huge\bfseries\color{darkblue} 12-Channel ECG Classification\par}
+    \vspace{0.22cm}
+    {\Huge\bfseries\color{darkblue} with Deep Learning\par}
+    \vspace{0.55cm}
+    {\Large From a MIT-BIH 1D-CNN Baseline to a PTB-XL Shared-Loss Fusion Model\par}
+    \vspace{0.95cm}
+    \rule{0.82\textwidth}{0.7pt}
+    \vspace{0.7cm}
+
+    \begin{minipage}{0.72\textwidth}
+    \centering
+    {\large\textbf{Team members}}\par
+    \vspace{0.25cm}
+    \renewcommand{\arraystretch}{1.25}
+    \begin{tabular}{>{\bfseries}l c}
+        Antoine Metz & 335801 \\
+        Biel Monge & 286031 \\
+        El\'{i}as L\'{o}pez & 286065 \\
+    \end{tabular}
+    \end{minipage}
+
+    \vfill
+    \begin{minipage}{0.84\textwidth}
+    \centering
+    \colorbox{softblue}{%
+        \begin{minipage}{0.90\textwidth}
+        \vspace{0.32cm}
+        \centering
+        \textbf{Final model:} 12-channel ECG CNN + metadata MLP with shared-loss fusion\\
+        \textbf{Main dataset:} PTB-XL multi-label classification of NORM, MI, STTC, CD and HYP
+        \vspace{0.32cm}
+        \end{minipage}}
+    \end{minipage}
+    \vspace{0.75cm}
+
+    {\large June 2026\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+% =========================================================
+\section{Introduction}
+% =========================================================
+
+Electrocardiography is one of the most widely used non-invasive tools for assessing cardiac activity. An ECG records the electrical activity of the heart over time and can reveal rhythm abnormalities, conduction disturbances, myocardial infarction patterns, hypertrophy, and repolarization changes. Manual interpretation remains the clinical reference, but automatic ECG classification is useful for screening, decision support, and large-scale processing of medical recordings.
+
+The goal of this project was to build a complete deep learning pipeline for ECG classification. The work started with a simpler MIT-BIH baseline, where each example is an extracted heartbeat window and the model predicts one heartbeat class \cite{moody2001mitbih,goldberger2000physionet}. This first part was useful to validate the basic workflow: loading raw ECG records, extracting annotated heartbeat windows, training a 1D-CNN, and computing evaluation metrics. However, this task is limited because it classifies isolated beats and does not use the full clinical ECG context.
+
+After feedback, the project was extended to PTB-XL, a larger and more realistic ECG dataset. In PTB-XL, each example is a full 10-second ECG recording with 12 synchronized ECG channels. The target is no longer a single heartbeat class, but a vector of possible diagnostic groups. The problem therefore becomes a recording-level multi-label classification task. This change is central: PTB-XL does not require us to guarantee that there is only one heartbeat in the input. On the contrary, the model receives the whole 10-second signal and learns from several cardiac cycles.
+
+The main question studied in the project is whether static clinical metadata can improve ECG classification. The final PTB-XL model combines a 1D-CNN branch for the ECG signal with an MLP branch for metadata. The metadata variables are age, sex, height, and weight. These variables are not temporal signals, so they are not treated as additional ECG channels. Instead, they provide patient-level context that may complement the ECG morphology.
+
+The project compares four approaches: metadata-only MLP, ECG-only CNN, soft voting between separately trained models, and shared-loss feature-level fusion. The final result is intentionally nuanced: the ECG signal remains the dominant source of information, while metadata gives a modest but measurable improvement when fused at feature level. This report presents the state of the art, methodology, experiments, results, discussion, and conclusions.
+
+% =========================================================
+\section{State of the Art}
+% =========================================================
+
+Automatic ECG classification has become an important research topic because ECG recordings contain rich diagnostic information and because public benchmarks now allow reproducible comparison between algorithms. PTB-XL is one of the most important datasets in this context. It contains clinical 12-lead ECG recordings, diagnostic statements, metadata, and recommended folds, making it suitable for structured evaluation of automatic ECG interpretation methods \cite{wagner2020ptbxl,physionetptbxl}. The dataset is naturally multi-label: one recording can contain several diagnostic statements, later aggregated into diagnostic superclasses.
+
+A major family of methods for ECG classification is based on convolutional neural networks. Since ECGs are temporal signals, one-dimensional convolutions can learn local waveform patterns directly from raw ECG samples. These patterns may correspond to local morphology, QRS shape, ST/T changes, or other temporal structures useful for diagnosis. Benchmark studies on PTB-XL show that CNN-based models, especially ResNet- and Inception-like architectures, are among the strongest methods across several ECG tasks \cite{strodthoff2021deep,strodthoffrepo}. This justifies our use of a 1D-CNN as the main ECG feature extractor.
+
+More complex architectures have also been explored in the literature, including recurrent networks, attention mechanisms, and transformer-inspired models \cite{jafari2026temporal}. These methods aim to capture longer-range temporal dependencies or interactions between ECG channels. However, a more complex architecture does not automatically guarantee better generalization, especially in medical signal classification where class imbalance and label uncertainty are important. For this reason, a simple and well-controlled CNN baseline remains a relevant starting point.
+
+Recent PTB-XL work also emphasizes that model architecture is not the only factor. Data-centric choices such as preprocessing, class balancing, threshold selection, and evaluation metrics strongly affect performance \cite{mehdi2026ptbxl}. This is important for our project because PTB-XL is multi-label and imbalanced. A global metric can hide weak performance on a rare class such as HYP. Therefore, the report uses macro-F1, per-class F1, and precision-recall curves rather than relying only on accuracy.
+
+Within this context, our project does not aim to introduce a new state-of-the-art architecture. Instead, it studies a focused fusion question: can simple clinical metadata improve a 12-channel ECG classifier, and is shared-loss feature-level fusion more effective than prediction-level soft voting? This positions the project as an applied comparison of fusion strategies rather than a pure architecture search.
+
+% =========================================================
+\section{Methodology}
+% =========================================================
+
+\subsection{Data Analysis}
+
+The project uses two ECG datasets with different objectives. MIT-BIH is used as a first baseline to validate a heartbeat-level pipeline \cite{moody2001mitbih}. PTB-XL is used as the main dataset for the final multi-label classification task.
+
+In the MIT-BIH baseline, the raw ECG records contain expert annotations. Each annotation indicates the location and type of a heartbeat. Around each annotated beat, a fixed-size window of 187 samples is extracted: 90 samples before the annotation and 97 samples after. Each window is treated as one example with shape \(1 \times 187\). The task is multi-class but single-label: each heartbeat belongs to exactly one of five classes, namely Normal, Supraventricular, Ventricular, Fusion, or Unclassifiable. This formulation uses CrossEntropyLoss because the classes are mutually exclusive.
+
+PTB-XL is different. The model does not classify isolated beats. Each input is a full 10-second ECG recording sampled at 100 Hz. Therefore, each ECG channel contains 1000 time samples. Since PTB-XL provides 12 synchronized ECG channels, one input has shape:
+\[
+X_{ECG} \in \mathbb{R}^{12 \times 1000}.
+\]
+This means that a training batch has shape \((\text{batch size},12,1000)\). The 12 channels are recorded at the same time and provide complementary views of the same cardiac activity.
+
+The final PTB-XL task predicts five diagnostic superclasses:
+\[
+\{\text{NORM},\text{MI},\text{STTC},\text{CD},\text{HYP}\}.
+\]
+The target is a binary vector in \(\{0,1\}^5\). For example, \([0,1,1,0,1]\) means that MI, STTC, and HYP are positive for the same ECG recording. This is why PTB-XL is treated as a multi-label classification problem.
+
+The official PTB-XL fold split is used. Folds 1-8 form the training set with 17,418 ECGs. Fold 9 is the validation set with 2,183 ECGs. Fold 10 is the test set with 2,198 ECGs. The training set is used to update the model weights, the validation set is used for model selection, early stopping, threshold tuning, and soft-voting alpha selection, and the test set is used only for the final evaluation.
+
+The metadata branch uses four static clinical variables: age, sex, height, and weight. Other columns from the PTB-XL metadata table are not used directly because they include identifiers, file paths, reports, split information, or diagnostic code fields. Diagnostic codes are excluded to avoid label leakage, since they are directly related to the target labels. The selected metadata variables provide patient-level context without directly containing the answer.
+
+\begin{table}[H]
+\centering
+\caption{Summary of the two classification settings used in the project.}
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{MIT-BIH baseline} & \textbf{PTB-XL final task} \\
+\midrule
+Input unit & Heartbeat window & Full ECG recording \\
+Input shape & \(1 \times 187\) & \(12 \times 1000\) \\
+Task type & Multi-class, single-label & Multi-label \\
+Labels & 5 heartbeat classes & 5 diagnostic superclasses \\
+Loss & CrossEntropyLoss & BCEWithLogitsLoss \\
+Role & Workflow validation & Main experiment \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Models and Optimization}
+
+The MIT-BIH baseline uses a simple 1D-CNN. The convolutional blocks follow the pattern:
+\[
+\text{Conv1D} \rightarrow \text{BatchNorm} \rightarrow \text{ReLU} \rightarrow \text{MaxPool}.
+\]
+The number of filters increases with depth: 32, 64, 128, and 256. The corresponding kernel sizes are 7, 5, 3, and 3. These values are architecture hyperparameters. The filter values themselves are learned by backpropagation. Each convolutional filter produces one feature map; max pooling reduces the temporal length of the feature maps; adaptive average pooling then compresses the final temporal dimension into a compact feature vector. A small linear classifier maps this vector to five logits.
+
+For PTB-XL, the final architecture is a shared-loss fusion model. It has two branches. The ECG branch is a 1D-CNN that processes the tensor of shape \((12,1000)\). The metadata branch is a small MLP that processes the four static metadata variables. The ECG branch outputs an ECG feature vector, and the metadata branch outputs a metadata feature vector. These two vectors are concatenated and passed to a final classifier that outputs five logits.
+
+\begin{figure}[H]
+\centering
+\imgbox{figures/fusionarchi.png}{0.86\linewidth}{14cm}
+\caption{Shared-loss fusion architecture. ECG signals are processed by a 1D-CNN, metadata by an MLP, and the concatenated feature vector is classified into five diagnostic superclasses.}
+\end{figure}
+
+The model outputs logits, not probabilities. For PTB-XL, the logits are:
+\[
+z = [z_{\text{NORM}}, z_{\text{MI}}, z_{\text{STTC}}, z_{\text{CD}}, z_{\text{HYP}}].
+\]
+During training, these logits are passed directly to BCEWithLogitsLoss. This loss combines sigmoid and Binary Cross Entropy in a numerically stable way. Therefore, sigmoid is not applied manually before the loss during training. During evaluation, sigmoid is applied explicitly to convert logits into probabilities, and each probability is compared with a class-specific threshold.
+
+The multi-label loss can be written as:
+\[
+\mathcal{L} = -\frac{1}{NC}\sum_{i=1}^{N}\sum_{c=1}^{C}\left[y_{i,c}\log(\sigma(z_{i,c}))+(1-y_{i,c})\log(1-\sigma(z_{i,c}))\right],
+\]
+where \(N\) is the batch size, \(C=5\), \(z_{i,c}\) is the logit for class \(c\), and \(y_{i,c}\) is the binary target.
+
+The word shared in shared-loss fusion means that there is only one final loss. Backpropagation of this same loss updates the ECG CNN branch, the metadata MLP branch, and the final classifier together. This is different from soft voting, where the ECG-only model and metadata-only model are trained separately and combined only at the probability level.
+
+The final training configuration uses Adam with learning rate 0.001, weight decay \(10^{-4}\), batch size 64, BCEWithLogitsLoss with positive class weights, ReduceLROnPlateau scheduling, early stopping with patience 6, and validation-based threshold tuning. Early stopping monitors validation macro-F1 and keeps the best checkpoint. It is a practical heuristic, not a proof of global optimality, but it helps reduce overfitting and avoids selecting the last epoch blindly.
+
+Threshold tuning is used because a fixed threshold of 0.5 is not necessarily optimal for all diagnostic groups. The final class thresholds selected on validation for the fusion model were:
+\[
+[0.65, 0.70, 0.50, 0.65, 0.60]
+\]
+for NORM, MI, STTC, CD, and HYP respectively.
+
+
+\subsection{Implementation and Reproducibility}
+
+The PTB-XL code was implemented as a modular PyTorch project rather than as a single notebook. The objective was to keep the pipeline readable and reproducible. The main entry point is \code{main.py}. The dataset folder contains the PTB-XL dataset class and dataloader logic. The preprocessing folder contains signal loading, metadata preprocessing, and label construction. The network folder contains the ECG CNN, the metadata MLP, and the fusion model. Utility scripts handle metrics, plots, checkpoints, and saved predictions.
+
+A practical difficulty was the cost of repeatedly loading thousands of WFDB ECG files. To solve this, the final version introduced a tensor cache. The first run reads the raw PTB-XL files and saves preprocessed ECG tensors, metadata tensors, and label tensors. Later runs can reuse the cache and train much faster. This cache is not a trained model; it only stores preprocessed inputs. Therefore, new models can still be trained normally from the same cached tensors.
+
+The implementation evolved through several versions. The first version introduced the modular PTB-XL pipeline and the first fusion model. A debug version added progress prints to identify whether the code was spending time loading data, building dataloaders, or training. The cache version fixed the main data loading bottleneck and made full experiments more practical. The final version added the training tools used in the report: scheduler, early stopping, positive class weights, threshold tuning, saved predictions, and soft-voting evaluation.
+
+This implementation evolution matters because the final results are not only a model output. They depend on a complete experimental pipeline: clean data loading, leakage-aware metadata selection, official splits, cached preprocessing, reproducible training arguments, saved metrics, and separate final test evaluation.
+
+% =========================================================
+\section{Experiments}
+% =========================================================
+
+The experiments were designed to compare progressively stronger settings and to isolate the effect of metadata. The first experiment is the MIT-BIH baseline. Its role is not to be the final clinical model, but to validate the basic 1D-CNN ECG workflow on a simpler heartbeat-level task. The model is evaluated with precision, recall, F1-score, macro average, and confusion matrix.
+
+The main PTB-XL experiments compare four final models. The metadata-only MLP uses only age, sex, height, and weight. It tests whether static patient-level information alone is predictive. The ECG-only CNN uses only the 12-channel ECG recording. It is the main signal-only baseline. The shared-loss fusion model combines ECG and metadata features before the final classifier. It tests whether metadata can help when fused inside the model. Finally, soft voting combines the probabilities of separately trained ECG-only and metadata-only models. It tests whether prediction-level fusion can compete with feature-level fusion.
+
+Soft voting uses the formula:
+\[
+p_{soft}=\alpha p_{ECG}+(1-\alpha)p_{meta}.
+\]
+Here \(p_{ECG}\) and \(p_{meta}\) are probabilities after sigmoid, not logits. Because the two weights sum to one, the resulting value remains a probability. No additional MLP is trained after the weighted average. The best \(\alpha\) was selected on the validation set, and the selected value was \(\alpha=0.9\), meaning that the soft-voting benchmark relied mostly on ECG-only probabilities.
+
+The evaluation focuses on metrics adapted to imbalanced multi-label classification. Precision measures how reliable positive predictions are. Recall measures how many true positives are found. F1-score balances precision and recall. Macro-F1 computes F1 separately for each class and averages the five scores, so each diagnostic group has the same weight. Micro-F1 pools all true positives, false positives, and false negatives across classes before computing F1, so it reflects global label-level performance but can be more influenced by frequent classes.
+
+Precision-recall curves are also reported. A PR curve is obtained by varying the threshold for a class. Lowering the threshold usually increases recall but decreases precision; increasing the threshold usually improves precision but reduces recall. Therefore, PR curves show all possible precision-recall trade-offs for each diagnostic group.
+
+% =========================================================
+\section{Results}
+% =========================================================
+
+\subsection{MIT-BIH Baseline Results}
+
+The MIT-BIH baseline reached strong results on the extracted heartbeat classification task. This confirms that the 1D-CNN can learn useful local ECG morphology. However, these results should not be overinterpreted for the final project because MIT-BIH is a simpler beat-level task with one label per example.
+
+\begin{table}[H]
+\centering
+\caption{MIT-BIH baseline test results.}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-score} & \textbf{Support} \\
+\midrule
+Normal & 0.9883 & 0.9790 & 0.9836 & 13592 \\
+Supraventricular & 0.6591 & 0.6938 & 0.6760 & 418 \\
+Ventricular & 0.9202 & 0.9659 & 0.9425 & 1086 \\
+Fusion & 0.6265 & 0.8595 & 0.7247 & 121 \\
+Unclassifiable & 0.9885 & 0.9942 & 0.9913 & 1207 \\
+\midrule
+Macro average & 0.8365 & 0.8985 & 0.8636 & -- \\
+Accuracy & \multicolumn{3}{c}{0.9711} & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The strongest classes are Normal and Unclassifiable. The weakest classes are Supraventricular and Fusion, which are less frequent and more difficult. This already shows why class-level metrics are more informative than accuracy alone.
+
+\subsection{PTB-XL Global Comparison}
+
+\begin{table}[H]
+\centering
+\caption{Main PTB-XL test metrics for final models.}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Model} & \textbf{Macro-F1} & \textbf{Micro-F1} & \textbf{Exact match} \\
+\midrule
+Metadata-only MLP & 0.4645 & 0.4909 & 0.2234 \\
+ECG-only CNN & 0.7091 & 0.7497 & 0.5528 \\
+Soft voting & 0.7084 & 0.7491 & 0.5523 \\
+Shared-loss fusion & \textbf{0.7108} & \textbf{0.7536} & \textbf{0.5660} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The metadata-only model performs much worse than all models using ECG signals. This means that age, sex, height, and weight alone are clearly insufficient for the diagnostic classification task. The ECG-only CNN is already strong, confirming that the ECG waveform contains most of the discriminative information. The shared-loss fusion model obtains the best macro-F1, micro-F1, and exact match accuracy, but the improvement over ECG-only is small. This supports a careful conclusion: metadata helps, but only modestly.
+
+\begin{figure}[H]
+\centering
+\imgbox{figures/model_comparison_metrics.png}{0.78\linewidth}{4.0cm}
+\caption{Global comparison of metadata-only, ECG-only, soft voting, and shared-loss fusion.}
+\end{figure}
+
+\subsection{Per-Class Results and PR Curves}
+
+\begin{table}[H]
+\centering
+\caption{Per-class F1-scores on the PTB-XL test set.}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Model} & \textbf{NORM} & \textbf{MI} & \textbf{STTC} & \textbf{CD} & \textbf{HYP} \\
+\midrule
+Metadata-only & 0.6984 & 0.4920 & 0.4521 & 0.4018 & 0.2783 \\
+ECG-only & 0.8520 & 0.7395 & \textbf{0.7628} & \textbf{0.7343} & 0.4569 \\
+Soft voting & 0.8520 & 0.7391 & 0.7623 & 0.7347 & 0.4540 \\
+Shared-loss fusion & \textbf{0.8556} & \textbf{0.7480} & 0.7493 & 0.7251 & \textbf{0.4757} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The per-class results show that performance is not uniform across diagnostic groups. NORM is the easiest class. MI, STTC, and CD are reasonably well classified. HYP is clearly the weakest diagnostic superclass for all models. The shared-loss fusion model improves NORM, MI, and HYP compared with ECG-only, but ECG-only remains slightly better on STTC and CD. Therefore, the fusion model should not be presented as a dramatic improvement; it is a small but consistent improvement on the main aggregate metrics.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\linewidth}
+\centering
+\imgbox{figures/per_class_f1_comparison.png}{\linewidth}{8cm}
+\caption{Per-class F1 comparison.}
+\end{subfigure}
+\begin{subfigure}{0.49\linewidth}
+\centering
+\imgbox{figures/fusion_pr_curves.png}{\linewidth}{8cm}
+\caption{PR curves for fusion.}
+\end{subfigure}
+\caption{Per-class analysis of the final models. HYP remains the weakest class, which is visible both in F1 and precision-recall behavior.}
+\end{figure}
+
+The PR curves confirm the same conclusion. NORM has the strongest curve and the best AUPRC. MI, STTC, and CD remain relatively high over a broad recall range. HYP is much lower. This means that increasing recall for HYP causes precision to drop quickly, so the model has difficulty detecting HYP without producing many false positives.
+
+\subsection{Training Dynamics and Soft-Voting Analysis}
+
+The training curves of the final fusion model show that the model progressively fits the training set: the training loss decreases steadily over the epochs. However, the validation loss is more unstable and does not follow the same decreasing trend. This suggests some overfitting, since the model continues to improve on the training data without a consistent improvement in validation loss.
+
+For this reason, the final model was not selected from the last epoch. Instead, we monitored validation macro-F1, used a learning-rate scheduler when validation performance stagnated, and kept the best validation checkpoint with early stopping. This is important because the final test evaluation should reflect the best model observed on validation data, not simply the model obtained after the final training epoch.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\linewidth}
+\centering
+\imgbox{figures/fusion_training_curves.png}{\linewidth}{7.2cm}
+\caption{Fusion training curves.}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.49\linewidth}
+\centering
+\imgbox{figures/soft_voting_alpha_sweep.png}{\linewidth}{7.2cm}
+\caption{Soft-voting alpha sweep.}
+\end{subfigure}
+\caption{Training and validation analysis. The fusion training loss decreases steadily, while the validation loss remains noisy, suggesting some overfitting. The final checkpoint is selected using validation macro-F1. The soft-voting sweep selects \(\alpha = 0.9\), meaning that the ensemble relies mostly on ECG-only probabilities.}
+\label{fig:training_soft_voting}
+\end{figure}
+
+The soft-voting alpha sweep is also informative. The best validation value is \(\alpha = 0.9\), meaning that the weighted average relies mostly on ECG-only probabilities and only slightly on metadata-only probabilities. This confirms the main interpretation of the project: the ECG signal is the dominant source of information, while metadata provides only weak complementary context. If metadata had been strongly predictive on its own, the best alpha would likely have been closer to a balanced average.
+
+
+\subsection{Metric Interpretation}
+
+The global scores should be interpreted with the multi-label nature of PTB-XL in mind. Macro-F1 is the most important score for model selection in this report because it gives equal weight to the five diagnostic superclasses. This matters because a model that performs well on frequent or easier classes can still be clinically limited if it performs poorly on a difficult class such as HYP. The fusion model has the best macro-F1, but the difference with ECG-only is small, which shows that the gain is real but not large.
+
+Micro-F1 gives a complementary view. It pools all true positives, false positives, and false negatives before computing the F1 score. Therefore, it is useful for measuring global label-level behavior. The fusion model also obtains the best micro-F1, which means that its improvement is not only caused by one isolated class. However, micro-F1 can be more influenced by frequent labels, so it should not replace per-class analysis.
+
+Exact match accuracy is the strictest metric. A prediction is counted as correct only if all five labels are exactly correct at the same time. For this reason, exact match accuracy is naturally lower than label-level metrics. The fusion model improves exact match accuracy from 0.5528 for ECG-only to 0.5660. This is a small improvement, but it means that the complete predicted label vector is more often fully correct.
+
+Finally, the PR curves are useful because the final labels depend on thresholds. A single threshold choice gives one operating point, but the PR curve shows the full behavior of each class as the threshold changes. This is especially important for HYP, where the curve is clearly lower. The curve shows that increasing recall for HYP quickly reduces precision, which explains why the class remains difficult even after threshold tuning.
+
+
+\subsection{Qualitative Output-Space Check}
+
+UMAP was added as a qualitative check after feedback about why the fusion gain is modest. This visualization should be interpreted carefully. In this version, UMAP was computed on the final output representation rather than on a deep penultimate feature vector. Therefore, it is an output-space check, not a proof of internal feature separation.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\linewidth}
+\centering
+\imgbox{figures/umap_ecg_only.png}{\linewidth}{4.0cm}
+\caption{ECG-only output space.}
+\end{subfigure}
+\begin{subfigure}{0.49\linewidth}
+\centering
+\imgbox{figures/umap_fusion.png}{\linewidth}{4.0cm}
+\caption{Fusion output space.}
+\end{subfigure}
+\caption{Qualitative UMAP check. The axes are arbitrary and PTB-XL is multi-label, so overlap should not be overinterpreted.}
+\end{figure}
+
+The UMAP plots do not show a radically different organization for the fusion model. This is consistent with the quantitative results: the fusion model slightly improves performance but does not fundamentally change the separation between classes. A more rigorous analysis would require SHAP, saliency maps, calibration analysis, or UMAP on penultimate feature vectors.
+
+% =========================================================
+\section{Discussion}
+% =========================================================
+
+The main result is that ECG morphology remains the dominant source of information. This is shown by the large gap between metadata-only and ECG-only performance. The metadata-only model reaches only 0.4645 macro-F1, while the ECG-only CNN reaches 0.7091. Therefore, static metadata alone cannot solve the task. This is expected because the diagnostic labels are primarily defined from ECG waveform patterns.
+
+The second result is that metadata is not useless. The shared-loss fusion model obtains the best macro-F1, micro-F1, exact match accuracy, and test loss among the final models. The improvement over ECG-only is modest, but it is consistent with the hypothesis that metadata can provide weak clinical context. For example, age and sex may correlate with some conditions, but they do not contain enough information to replace the ECG signal.
+
+Shared-loss fusion performs slightly better than soft voting because it combines information before the final classifier. Soft voting averages final probabilities from two separately trained models. It cannot learn interactions between ECG features and metadata features. In contrast, feature-level fusion allows the classifier to use metadata and ECG representations jointly. However, the small improvement suggests that the four metadata variables are weak compared with the ECG signal.
+
+HYP is the main weakness of the project. It remains the lowest class in per-class F1 and PR curves. There are several possible explanations. HYP may be less frequent, more subtle in ECG morphology, or harder to distinguish from other diagnostic groups. It may also suffer from label overlap. This project does not isolate the exact cause, so the interpretation should remain cautious. Better imbalance handling would be the most direct future improvement.
+
+The difference between macro-F1 and micro-F1 is also important for interpreting the results. Macro-F1 gives the same weight to each diagnostic group, so a weak class such as HYP directly lowers the final score. Micro-F1 pools all decisions before computing F1, so it reflects global label-level performance and is more influenced by frequent labels. Reporting both metrics prevents a misleading interpretation: a model can look good globally while still being weak on a minority class. This is why the report also includes per-class F1 and PR curves.
+
+
+\subsection{What Worked and What Did Not}
+
+Several parts of the pipeline worked well. First, the transition from MIT-BIH to PTB-XL was successful because the project moved from a simple beat-level exercise to a more realistic recording-level setting. The MIT-BIH baseline helped validate the basic signal-processing and CNN workflow, but the PTB-XL experiments are more relevant to the final objective because they use full 10-second ECG recordings and multi-label diagnostic targets.
+
+Second, the ECG-only model worked well as a strong baseline. Its performance shows that a relatively simple 1D-CNN can extract useful information from the raw 12-channel signal. This supports the methodological choice of starting with a CNN rather than immediately using a much more complex architecture. The CNN captures local temporal morphology while keeping the model understandable and trainable within the project constraints.
+
+Third, the shared-loss fusion strategy worked better than the two alternative metadata strategies. Metadata-only was too weak to solve the task, and soft voting only combined final probabilities after separate training. Shared-loss fusion was the only approach that allowed the final classifier to learn from ECG and metadata representations jointly. The gain is small, but it is consistent with the idea that feature-level fusion is more flexible than prediction-level averaging.
+
+However, some parts did not work as strongly as expected. The first limitation is the small impact of metadata. The four selected variables are safe from label leakage, but they are also simple and low-dimensional. They provide general clinical context but not detailed diagnostic evidence. The second limitation is the persistent weakness of HYP. Even with fusion and threshold tuning, HYP remains much lower than the other classes. This suggests that the current training setup does not fully solve the minority-class or subtle-pattern problem.
+
+Finally, the qualitative UMAP visualization should not be interpreted as a strong result. It was useful as a quick check, but it does not prove that the internal representation is better separated. A stronger analysis would require extracting penultimate features, evaluating calibration, or using interpretability methods to study which channels and time regions influence predictions.
+
+The project also has methodological limitations. First, only four metadata variables were used. Additional clinical variables might help, but they must be selected carefully to avoid label leakage. Second, the architecture is intentionally simple. More advanced models such as residual 1D-CNNs, Inception-style convolutions, or attention mechanisms could improve ECG feature extraction. Third, threshold tuning was performed on validation data. This is standard model selection and does not use the test set, but it can still slightly overfit to validation. Finally, the UMAP analysis is only qualitative.
+
+Despite these limitations, the experiments answer the main project question. Metadata can improve PTB-XL classification, but only slightly. The best strategy among those tested is shared-loss feature-level fusion, not metadata-only prediction or soft voting. The result is useful precisely because it avoids overclaiming: metadata provides complementary context, while ECG remains the main predictive source.
+
+Future work should focus on three directions. The first is better imbalance handling, especially for HYP, using focal loss, balanced sampling, or refined class weights. The second is a stronger ECG architecture, such as residual 1D-CNN blocks or attention over time and channels. The third is better analysis of metadata contribution using calibration, SHAP, saliency maps, or penultimate-feature UMAP.
+
+% =========================================================
+\section{Conclusions}
+% =========================================================
+
+This project built a complete ECG classification pipeline, starting from a MIT-BIH heartbeat-level baseline and extending it to PTB-XL 12-channel multi-label classification. The MIT-BIH baseline validated the basic 1D-CNN workflow. The PTB-XL extension introduced full 10-second ECG recordings, five diagnostic superclasses, static metadata, validation threshold tuning, and several model comparisons.
+
+The final shared-loss fusion model combines a 1D-CNN ECG branch and an MLP metadata branch. It reaches a test macro-F1 of 0.7108 and a micro-F1 of 0.7536, slightly outperforming ECG-only and soft voting. The conclusion is therefore nuanced: metadata helps, but the improvement is modest because the ECG signal already contains most of the diagnostic information.
+
+The most difficult class is HYP, which remains weak across all models. This confirms the importance of per-class analysis and precision-recall curves in imbalanced multi-label ECG classification. Future work should prioritize better imbalance handling, stronger ECG architectures, and more rigorous interpretability or metadata contribution analysis.
+
+From a methodological point of view, the project also highlights the importance of separating training, validation, and test roles. The training folds are used to learn the model weights, the validation fold is used to select the checkpoint, tune thresholds, and choose the soft-voting alpha, and the test fold is only used for the final reported metrics. This separation is important because threshold tuning and early stopping can otherwise introduce optimistic results if the test set is used too early.
+
+The final comparison also gives a useful lesson about model complexity. Adding metadata or a fusion mechanism does not automatically create a large improvement. The best result comes from a relatively simple feature-level fusion model, but the gain remains limited. This suggests that future improvements should first target the hard parts of the data, especially class imbalance and HYP detection, before moving directly to larger architectures.
+
+Overall, the project provides a clean and reproducible foundation for PTB-XL ECG classification. It demonstrates the full workflow from raw ECG data to final multi-label evaluation and gives a clear experimental answer to the question of metadata fusion.
+
+\clearpage
+% =========================================================
+\section*{References}
+\addcontentsline{toc}{section}{References}
+% =========================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{wagner2020ptbxl}
+P. Wagner, N. Strodthoff, R.-D. Bousseljot, D. Kreiseler, F. I. Lunze, W. Samek, and T. Schaeffter.
+\newblock PTB-XL, a large publicly available electrocardiography dataset.
+\newblock \emph{Scientific Data}, 7, Article 154, 2020.
+\newblock DOI: \url{https://doi.org/10.1038/s41597-020-0495-6}.
+
+\bibitem{physionetptbxl}
+P. Wagner, N. Strodthoff, R.-D. Bousseljot, W. Samek, and T. Schaeffter.
+\newblock PTB-XL, a large publicly available electrocardiography dataset, version 1.0.3.
+\newblock \emph{PhysioNet}, 2022.
+\newblock DOI: \url{https://doi.org/10.13026/kfzx-aw45}.
+
+\bibitem{strodthoff2021deep}
+N. Strodthoff, P. Wagner, T. Schaeffter, and W. Samek.
+\newblock Deep Learning for ECG Analysis: Benchmarks and Insights from PTB-XL.
+\newblock \emph{IEEE Journal of Biomedical and Health Informatics}, 25(5):1519--1528, 2021.
+\newblock DOI: \url{https://doi.org/10.1109/JBHI.2020.3022989}.
+
+\bibitem{strodthoffrepo}
+N. Strodthoff and contributors.
+\newblock ECG PTB-XL Benchmarking Repository.
+\newblock GitHub repository accompanying the PTB-XL benchmark study.
+\newblock \url{https://github.com/helme/ecg_ptbxl_benchmarking}.
+
+\bibitem{mehdi2026ptbxl}
+N. A. Mehdi and A. Ali.
+\newblock ECG Classification on PTB-XL: A Data-Centric Approach with Simplified CNN-VAE.
+\newblock \emph{arXiv preprint arXiv:2603.07558}, 2026.
+\newblock \url{https://arxiv.org/html/2603.07558v1}.
+
+\bibitem{jafari2026temporal}
+A. Jafari and F. Jafari.
+\newblock How Much Temporal Modeling is Enough? A Systematic Study of Hybrid CNN-RNN Architectures for Multi-Label ECG Classification.
+\newblock \emph{arXiv preprint arXiv:2601.18830}, 2026.
+\newblock \url{https://arxiv.org/abs/2601.18830}.
+
+\bibitem{moody2001mitbih}
+G. B. Moody and R. G. Mark.
+\newblock The impact of the MIT-BIH Arrhythmia Database.
+\newblock \emph{IEEE Engineering in Medicine and Biology Magazine}, 20(3):45--50, 2001.
+\newblock DOI: \url{https://doi.org/10.1109/51.932724}.
+
+\bibitem{goldberger2000physionet}
+A. L. Goldberger, L. A. N. Amaral, L. Glass, J. M. Hausdorff, P. Ch. Ivanov, R. G. Mark, J. E. Mietus, G. B. Moody, C.-K. Peng, and H. E. Stanley.
+\newblock PhysioBank, PhysioToolkit, and PhysioNet: Components of a new research resource for complex physiologic signals.
+\newblock \emph{Circulation}, 101(23):e215--e220, 2000.
+\newblock DOI: \url{https://doi.org/10.1161/01.CIR.101.23.e215}.
+
+\end{thebibliography}
+
+\end{document}
