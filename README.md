@@ -62,6 +62,7 @@ Deep-Learning/
 │   └── 01_mitbih_baseline.html     # HTML export of the MIT-BIH baseline
 ├── runs/                           # Final experiment outputs
 ├── report/             # LaTeX report project
+├── slides/                         # Contain presentation slides
 ├── data/                           # Local dataset folder, not tracked
 ├── cache/                          # Tensor cache folder, not tracked
 ├── requirements.txt
